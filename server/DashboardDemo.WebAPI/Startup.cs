@@ -1,5 +1,8 @@
+using DashboardDemo.WebAPI.Repository;
 using DevExpress.AspNetCore;
 using DevExpress.DashboardAspNetCore;
+using DevExpress.DashboardCommon;
+using DevExpress.DashboardWeb;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
@@ -18,14 +21,24 @@ namespace DashboardDemo.WebAPI
 
         public IConfiguration Configuration { get; }
 
-        // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
             services
-                .AddMvc()
-                .AddDefaultDashboardController(configurator => { });
-
-            services.AddDevExpressControls();
+                .AddDevExpressControls()
+                .AddControllers()
+                .AddDefaultDashboardController(configurator => {
+                    configurator.DataLoading += (s, e) => {
+                        if(e.DataSourceName == "Fruit Data Source") {
+                            e.Data = DataRepository.GetFruits();
+                        }
+                        
+                        if(e.DataSourceName == "Animal Data Source") {
+                            e.Data = DataRepository.GetAnimals();
+                        }
+                    };
+                    
+                    configurator.SetDataSourceStorage(CreateDataSourceStorage());
+                });
             
             services.AddControllers();
             services.AddSwaggerGen(c =>
@@ -34,7 +47,6 @@ namespace DashboardDemo.WebAPI
             });
         }
 
-        // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
             if (env.IsDevelopment())
@@ -46,25 +58,30 @@ namespace DashboardDemo.WebAPI
 
             app.UseHttpsRedirection();
 
+            app.UseDevExpressControls();
             app.UseRouting();
+            app.UseCors("CorsPolicy");
 
             app.UseAuthorization();
-            
-            app.UseStaticFiles();
-            app.UseDevExpressControls();
 
             app.UseEndpoints(endpoints =>
             {
-                endpoints.MapControllers();
+                EndpointRouteBuilderExtension.MapDashboardRoute(endpoints, "api/dashboard");
+                endpoints.MapControllers().RequireCors("CorsPolicy");
             });
+        }
+
+        public DataSourceInMemoryStorage CreateDataSourceStorage()
+        {
+            var dataSourceStorage = new DataSourceInMemoryStorage();
+
+            var fruitDataSource = new DashboardObjectDataSource("Fruit Data Source");
+            var animalDataSource = new DashboardObjectDataSource("Animal Data Source");
             
-            app.UseEndpoints(endpoints => {
-                // Maps the dashboard route.
-                EndpointRouteBuilderExtension.MapDashboardRoute(endpoints, "api/dashboards");
-                endpoints.MapControllerRoute(
-                    name: "default",
-                    pattern: "{controller=Home}/{action=Index}/{id?}");
-            });
+            dataSourceStorage.RegisterDataSource("fruitDataSource", fruitDataSource.SaveToXml());             
+            dataSourceStorage.RegisterDataSource("animalDataSource", animalDataSource.SaveToXml());             
+            
+            return dataSourceStorage;
         }
     }
 }
